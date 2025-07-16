@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 dotenv.config();
 
@@ -35,6 +35,7 @@ async function run() {
 
 
 
+
         const database = client.db('truNestInsurance');
         // Collections
         const policiesCollection = database.collection('policies');
@@ -46,6 +47,39 @@ async function run() {
         app.get('/policies', async (req, res) => {
             const policies = await policiesCollection.find().toArray();
             res.send(policies);
+        });
+
+        // Getting a single policy
+        app.get('/policy/:id', async (req, res) => {
+            const id = req.params.id;
+            const filter = { _id: new ObjectId(id) };
+            const policy = await policiesCollection.findOne(filter);
+            res.send(policy);
+        });
+
+        // Policy posting API from client
+        app.post('/policies', async (req, res) => {
+            const policy = req.body;
+            const result = await policiesCollection.insertOne(policy);
+            res.send(result);
+        });
+
+        // Policy updating API
+        app.put('/policies/:id', async (req, res) => {
+            const id = req.params.id;
+            const updatedData = req.body;
+            const filter = { _id: new ObjectId(id) };
+            const updatedDoc = { $set: updatedData };
+            const result = await policiesCollection.updateOne(filter, updatedDoc);
+            res.send(result);
+        });
+
+        // Policy deleting API
+        app.delete('/policies/:id', async (req, res) => {
+            const id = req.params.id;
+            const filter = { _id: new ObjectId(id) };
+            const result = await policiesCollection.deleteOne(filter);
+            res.send(result);
         });
 
 
@@ -70,7 +104,7 @@ async function run() {
         app.get('/users', async (req, res) => {
             const users = await usersCollection.find().toArray();
             res.send(users);
-        })
+        });
 
 
 
