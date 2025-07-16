@@ -38,8 +38,10 @@ async function run() {
         const database = client.db('truNestInsurance');
         // Collections
         const policiesCollection = database.collection('policies');
+        const usersCollection = database.collection("users");
 
-        
+
+        // Policy Related APIs
         // Getting all the policies
         app.get('/policies', async (req, res) => {
             const policies = await policiesCollection.find().toArray();
@@ -47,6 +49,28 @@ async function run() {
         });
 
 
+
+        // Users Related APIs
+        app.post('/users', async (req, res) => {
+            const user = req.body;
+            if (!user.email) {
+                return res.status(400).send({ error: "Email is required" });
+            }
+
+            const existingUser = await usersCollection.findOne({ email: user.email });
+            if (existingUser) {
+                return res.status(200).send({ message: "User already exists" });
+            }
+
+            const result = await usersCollection.insertOne(user);
+            res.send(result);
+        });
+
+        // Getting all the users
+        app.get('/users', async (req, res) => {
+            const users = await usersCollection.find().toArray();
+            res.send(users);
+        })
 
 
 
