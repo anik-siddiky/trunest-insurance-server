@@ -45,20 +45,31 @@ async function run() {
         // Policy Related APIs
         // Getting all the policies
         app.get('/policies', async (req, res) => {
+            const { category, search, page = 1, limit = 9 } = req.query;
 
-            const { category, search } = req.query;
             const query = {};
-
             if (category) {
                 query.category = category;
             }
-
             if (search) {
                 query.policyTitle = { $regex: search, $options: 'i' };
             }
 
-            const policies = await policiesCollection.find(query).toArray();
-            res.send(policies);
+            const pageNum = parseInt(page, 10);
+            const limitNum = parseInt(limit, 10);
+
+            const totalPolicies = await policiesCollection.countDocuments(query);
+
+            const policies = await policiesCollection
+                .find(query)
+                .skip((pageNum - 1) * limitNum)
+                .limit(limitNum)
+                .toArray();
+
+            res.send({
+                policies,
+                totalPolicies,
+            });
         });
 
         // Getting a single policy
