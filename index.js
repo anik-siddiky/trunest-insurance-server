@@ -45,7 +45,19 @@ async function run() {
         // Policy Related APIs
         // Getting all the policies
         app.get('/policies', async (req, res) => {
-            const policies = await policiesCollection.find().toArray();
+
+            const { category, search } = req.query;
+            const query = {};
+
+            if (category) {
+                query.category = category;
+            }
+
+            if (search) {
+                query.policyTitle = { $regex: search, $options: 'i' };
+            }
+
+            const policies = await policiesCollection.find(query).toArray();
             res.send(policies);
         });
 
