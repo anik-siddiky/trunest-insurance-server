@@ -108,6 +108,7 @@ async function run() {
 
 
         // Users Related APIs
+        // Saving all the user data to the DB
         app.post('/users', async (req, res) => {
             const user = req.body;
             if (!user.email) {
@@ -115,12 +116,17 @@ async function run() {
             }
 
             const existingUser = await usersCollection.findOne({ email: user.email });
+
             if (existingUser) {
-                return res.status(200).send({ message: "User already exists" });
+                const result = await usersCollection.updateOne(
+                    { email: user.email },
+                    { $set: { lastLogin: new Date().toISOString() } }
+                );
+                return res.status(200).send({ message: "Last login updated", updated: result.modifiedCount });
             }
 
             const result = await usersCollection.insertOne(user);
-            res.send(result);
+            res.send({ message: "User created", insertedId: result.insertedId });
         });
 
         // Getting all the users
@@ -128,6 +134,57 @@ async function run() {
             const users = await usersCollection.find().toArray();
             res.send(users);
         });
+
+        // Getting a single user's data
+        app.get('/user', async (req, res) => {
+            const email = req.query.email;
+            const user = await usersCollection.findOne(email);
+            res.send(user);
+        });
+
+        // Updating user's role
+        app.patch('/users/:id', async (req, res) => {
+            const id = req.params.id;
+            const { role } = req.body;
+
+            if (!role) {
+                return res.status(400).send({ error: "Role is required" });
+            }
+
+            try {
+                const result = await usersCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    { $set: { role } }
+                );
+
+                if (result.modifiedCount === 0) {
+                    return res.status(404).send({ error: "User not found or role unchanged" });
+                }
+
+                res.send({ message: "User role updated", modifiedCount: result.modifiedCount });
+            } catch (error) {
+                res.status(500).send({ error: "Failed to update user role" });
+            }
+        });
+
+
+        // Deleting user's from DB
+        app.delete('/users/:id', async (req, res) => {
+            const id = req.params.id;
+
+            try {
+                const result = await usersCollection.deleteOne({ _id: new ObjectId(id) });
+
+                if (result.deletedCount === 0) {
+                    return res.status(404).send({ error: "User not found" });
+                }
+
+                res.send({ message: "User deleted successfully" });
+            } catch (error) {
+                res.status(500).send({ error: "Failed to delete user" });
+            }
+        });
+
 
 
 
