@@ -72,6 +72,21 @@ async function run() {
             });
         });
 
+        // Top 6 purchased insurance policies
+        app.get('/policies/top-purchased', async (req, res) => {
+            try {
+                const topPolicies = await policiesCollection
+                    .find()
+                    .sort({ purchasedCount: -1 })
+                    .limit(6)
+                    .toArray();
+
+                res.send(topPolicies);
+            } catch (error) {
+                res.status(500).send({ error: "Failed to fetch top policies" });
+            }
+        });
+
         // Getting a single policy
         app.get('/policy/:id', async (req, res) => {
             const id = req.params.id;
