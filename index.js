@@ -73,6 +73,12 @@ async function run() {
             });
         });
 
+        // Get ALL policies without pagination
+        app.get('/all-policies', async (req, res) => {
+                const allPolicies = await policiesCollection.find().toArray();
+                res.send(allPolicies);
+        });
+
         // Top 6 purchased insurance policies
         app.get('/policies/top-purchased', async (req, res) => {
             try {
