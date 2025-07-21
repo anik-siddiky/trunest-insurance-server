@@ -216,6 +216,13 @@ async function run() {
             res.send(result);
         });
 
+        // Getting single blog data
+        app.get('/blog/:id', async (req, res) => {
+            const id = req.params.id;
+            const filter = { _id: new ObjectId(id) };
+            const result = await blogsCollection.findOne(filter);
+            res.send(result);
+        })
 
         // Update a blog
         app.put('/blogs/:id', async (req, res) => {
@@ -234,6 +241,20 @@ async function run() {
             const result = await blogsCollection.updateOne(filter, updateDoc);
             res.send(result);
         });
+
+        // Blog view increment api
+        app.patch('/blogs/:id/increment-view', async (req, res) => {
+            const id = req.params.id;
+            const filter = { _id: new ObjectId(id) };
+            const update = { $inc: { viewCount: 1 } };
+
+            const result = await blogsCollection.updateOne(filter, update);
+            if (result.modifiedCount === 0) {
+                return res.status(404).send({ message: 'Blog not found' });
+            }
+            res.send({ message: 'View count incremented' });
+        });
+
 
         // Blog deleting API
         app.delete('/blogs/:id', async (req, res) => {
