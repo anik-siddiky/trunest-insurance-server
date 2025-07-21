@@ -255,6 +255,12 @@ async function run() {
             res.send({ message: 'View count incremented' });
         });
 
+        // Getting latest 4 blogs
+        app.get('/blogs/latest', async (req, res) => {
+            const latestBlogs = await blogsCollection.find({}).sort({ publishDate: -1 }).limit(4).toArray();
+            res.send(latestBlogs);
+        });
+
 
         // Blog deleting API
         app.delete('/blogs/:id', async (req, res) => {
