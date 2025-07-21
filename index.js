@@ -39,7 +39,8 @@ async function run() {
         const database = client.db('truNestInsurance');
         // Collections
         const policiesCollection = database.collection('policies');
-        const usersCollection = database.collection("users");
+        const usersCollection = database.collection('users');
+        const blogsCollection = database.collection('blogs');
 
 
         // Policy Related APIs
@@ -198,6 +199,47 @@ async function run() {
             } catch (error) {
                 res.status(500).send({ error: "Failed to delete user" });
             }
+        });
+
+
+        // Blogs related APIs
+        // Getting all blogs
+        app.get('/blogs', async (req, res) => {
+            const blogs = await blogsCollection.find().sort({ createdAt: -1 }).toArray();
+            res.send(blogs);
+        });
+
+        // Posting the blog data
+        app.post('/blogs', async (req, res) => {
+            const blogData = req.body;
+            const result = await blogsCollection.insertOne(blogData);
+            res.send(result);
+        });
+
+
+        // Update a blog
+        app.put('/blogs/:id', async (req, res) => {
+            const id = req.params.id;
+            const updatedBlog = req.body;
+
+            const filter = { _id: new ObjectId(id) };
+            const updateDoc = {
+                $set: {
+                    title: updatedBlog.title,
+                    content: updatedBlog.content,
+                    image: updatedBlog.image,
+                },
+            };
+
+            const result = await blogsCollection.updateOne(filter, updateDoc);
+            res.send(result);
+        });
+
+        // Blog deleting API
+        app.delete('/blogs/:id', async (req, res) => {
+            const id = req.params.id;
+            const result = await blogsCollection.deleteOne({ _id: new ObjectId(id) });
+            res.send(result);
         });
 
 
