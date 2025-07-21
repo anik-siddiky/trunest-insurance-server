@@ -183,6 +183,24 @@ async function run() {
             }
         });
 
+        // Updating user's data in DB when user updating their profile
+        app.patch('/users/email/:email', async (req, res) => {
+            const email = req.params.email;
+            const { name, photoURL } = req.body;
+
+            const updateFields = {};
+            if (name) updateFields.name = name;
+            if (photoURL) updateFields.photoURL = photoURL;
+
+            const result = await usersCollection.updateOne(
+                { email },
+                { $set: updateFields }
+            );
+
+            res.send({ message: "User updated", modifiedCount: result.modifiedCount });
+        });
+
+
 
         // Deleting user's from DB
         app.delete('/users/:id', async (req, res) => {
