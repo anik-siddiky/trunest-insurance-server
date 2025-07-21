@@ -41,6 +41,7 @@ async function run() {
         const policiesCollection = database.collection('policies');
         const usersCollection = database.collection('users');
         const blogsCollection = database.collection('blogs');
+        const applicationCollection = database.collection('applications');
 
 
         // Policy Related APIs
@@ -75,8 +76,8 @@ async function run() {
 
         // Get ALL policies without pagination
         app.get('/all-policies', async (req, res) => {
-                const allPolicies = await policiesCollection.find().toArray();
-                res.send(allPolicies);
+            const allPolicies = await policiesCollection.find().toArray();
+            res.send(allPolicies);
         });
 
         // Top 6 purchased insurance policies
@@ -292,6 +293,15 @@ async function run() {
             const result = await blogsCollection.deleteOne({ _id: new ObjectId(id) });
             res.send(result);
         });
+
+
+        // Application related APIs
+        // Saving application in the DB
+        app.post('/application', async (req, res) => {
+            const data = req.body;
+            const result = await applicationCollection.insertOne(data);
+            res.send(result);
+        })
 
 
 
