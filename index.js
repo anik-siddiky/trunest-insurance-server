@@ -120,6 +120,19 @@ async function run() {
             res.send(result);
         });
 
+        // Updating policy purchasedCount when user apply and agent approve it
+        app.patch('/policies/:id/increase', async (req, res) => {
+            const id = req.params.id;
+            const result = await policiesCollection.updateOne(
+                { _id: new ObjectId(id) },
+                { $inc: { purchasedCount: 1 } }
+            );
+            res.send(result);
+        });
+
+        
+
+
         // Policy deleting API
         app.delete('/policies/:id', async (req, res) => {
             const id = req.params.id;
@@ -301,7 +314,34 @@ async function run() {
             const data = req.body;
             const result = await applicationCollection.insertOne(data);
             res.send(result);
-        })
+        });
+
+        // Getting all application
+        app.get('/application', async (req, res) => {
+            const result = await applicationCollection.find().toArray();
+            res.send(result);
+        });
+
+        // Getting a single application data
+        app.get('/application/:id', async (req, res) => {
+            const id = req.params.id;
+            const filter = { _id: new ObjectId(id) };
+            const result = await applicationCollection.findOne(filter);
+            res.send(result);
+        });
+
+        // Updating application status
+        app.patch('/application/:id', async (req, res) => {
+            const id = req.params.id;
+            const updates = req.body;
+            const filter = { _id: new ObjectId(id) };
+            const updateDoc = { $set: updates };
+
+            const result = await applicationCollection.updateOne(filter, updateDoc);
+
+            res.send({ message: "Application updated", result });
+        });
+
 
 
 
