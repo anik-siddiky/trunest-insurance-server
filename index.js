@@ -42,6 +42,33 @@ async function run() {
         const usersCollection = database.collection('users');
         const blogsCollection = database.collection('blogs');
         const applicationCollection = database.collection('applications');
+        const reviewCollection = database.collection('reviews')
+
+
+        // Review related APIs
+        // POST /reviews
+        app.post('/reviews', async (req, res) => {
+            const review = req.body;
+            review.createdAt = new Date();
+            const result = await reviewCollection.insertOne(review);
+            res.status(201).send({ message: "Review submitted successfully", reviewId: result.insertedId });
+        });
+
+        // Getting all reviews
+        app.get('/reviews', async (req, res) => {
+            const reviews = await reviewCollection.find().sort({ createdAt: -1 }).toArray();
+            res.send(reviews);
+        });
+
+        // Getting a single review
+        app.get('/reviews/:id', async (req, res) => {
+            const id = req.params.id;
+            const review = await reviewCollection.findOne({ _id: new ObjectId(id) });
+            if (!review) { return res.status(404).send({ error: 'Review not found' }); }
+            res.send(review);
+        });
+
+
 
 
         // Policy Related APIs
@@ -130,7 +157,7 @@ async function run() {
             res.send(result);
         });
 
-        
+
 
 
         // Policy deleting API
