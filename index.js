@@ -43,6 +43,30 @@ async function run() {
         const blogsCollection = database.collection('blogs');
         const applicationCollection = database.collection('applications');
         const reviewCollection = database.collection('reviews')
+        const newsletterCollection = database.collection('newsletter');
+
+
+
+
+        app.post('/newsletter', async (req, res) => {
+
+            const { name, email } = req.body;
+
+            if (!name || !email) {
+                return res.status(400).json({ error: 'Name and email are required.' });
+            }
+            const existing = await newsletterCollection.findOne({ email });
+            if (existing) {
+                return res.status(409).json({ error: 'Email already subscribed.' });
+            }
+            const result = await newsletterCollection.insertOne({
+                name,
+                email,
+                subscribedAt: new Date(),
+            });
+
+            res.status(201).json({ message: 'Subscription successful', insertedId: result.insertedId });
+        });
 
 
         // Review related APIs
@@ -60,6 +84,22 @@ async function run() {
             res.send(reviews);
         });
 
+        // Getting 5 reviews for feature
+        app.get('/reviews/featured', async (req, res) => {
+            try {
+                const reviews = await reviewCollection
+                    .find()
+                    .sort({ createdAt: 1 }) // ascending: oldest first
+                    .limit(5)
+                    .toArray();
+
+                res.send(reviews);
+            } catch (error) {
+                console.error('Error fetching featured reviews:', error);
+                res.status(500).send({ error: 'Failed to fetch featured reviews' });
+            }
+        });
+
         // Getting a single review
         app.get('/reviews/:id', async (req, res) => {
             const id = req.params.id;
@@ -67,6 +107,9 @@ async function run() {
             if (!review) { return res.status(404).send({ error: 'Review not found' }); }
             res.send(review);
         });
+
+
+
 
 
 
@@ -204,6 +247,18 @@ async function run() {
             const user = await usersCollection.findOne(email);
             res.send(user);
         });
+
+        // Getting first 3 agents
+        app.get('/agents/first', async (req, res) => {
+            const agents = await usersCollection
+                .find({ role: 'agent' })
+                .sort({ _id: 1 })
+                .limit(3)
+                .toArray();
+
+            res.send(agents);
+        });
+
 
         // Updating user's role
         app.patch('/users/:id', async (req, res) => {
