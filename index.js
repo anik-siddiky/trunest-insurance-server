@@ -400,9 +400,26 @@ async function run() {
 
         // Getting all application
         app.get('/application', async (req, res) => {
-            const result = await applicationCollection.find().toArray();
-            res.send(result);
+            const { email, status } = req.query;
+            const filter = {};
+
+            if (email) {
+                filter['personal.email'] = email;
+            }
+
+            if (status) {
+                filter.status = status;
+            }
+
+            try {
+                const result = await applicationCollection.find(filter).toArray();
+                res.send(result);
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({ message: 'Server error' });
+            }
         });
+
 
         // Getting a single application data
         app.get('/application/:id', async (req, res) => {
@@ -423,6 +440,10 @@ async function run() {
 
             res.send({ message: "Application updated", result });
         });
+
+
+
+
 
 
 
