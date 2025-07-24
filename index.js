@@ -77,11 +77,18 @@ async function run() {
             }
         });
 
-        // Getting all the payment data
+        // Getting payment data by email
         app.get('/payments', async (req, res) => {
-            const result = await paymentHistoryCollection.find().toArray();
+            const email = req.query.email;
+
+            if (!email) {
+                return res.status(400).send({ message: 'Email is required' });
+            }
+
+            const result = await paymentHistoryCollection.find({ userEmail: email }).toArray();
             res.send(result);
         });
+
 
         // Getting a single payment data
         app.get('/payment/:id', async (req, res) => {
