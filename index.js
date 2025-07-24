@@ -5,6 +5,7 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 dotenv.config();
 
+const stripe = require('stripe')(process.env.PAYMENT_GATEWAY_KEY);
 const app = express();
 const port = process.env.PORT || 5000;
 
@@ -44,8 +45,51 @@ async function run() {
         const applicationCollection = database.collection('applications');
         const reviewCollection = database.collection('reviews')
         const newsletterCollection = database.collection('newsletter');
+        const paymentHistoryCollection = database.collection('payments');
 
 
+
+
+        app.post('/confirm-payment', async (req, res) => {
+            const { applicationId, amount, transactionId, policyTitle, userEmail } = req.body;
+
+            try {
+                await applicationCollection.updateOne(
+                    { _id: new ObjectId(applicationId) },
+                    { $set: { paymentStatus: 'paid' } }
+                );
+
+                const paymentRecord = {
+                    applicationId,
+                    transactionId,
+                    amount,
+                    policyTitle,
+                    userEmail,
+                    paidAt: new Date(),
+                };
+
+                await paymentHistoryCollection.insertOne(paymentRecord);
+
+                res.send({ success: true, message: 'Payment recorded successfully' });
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({ success: false, message: 'Failed to record payment' });
+            }
+        });
+
+        // Getting all the payment data
+        app.get('/payments', async (req, res) => {
+            const result = await paymentHistoryCollection.find().toArray();
+            res.send(result);
+        });
+
+        // Getting a single payment data
+        app.get('/payment/:id', async (req, res) => {
+            const id = req.params.id;
+            const filter = { _id: new ObjectId(id) };
+            const result = await paymentHistoryCollection.findOne(filter);
+            res.send(result);
+        })
 
 
         app.post('/newsletter', async (req, res) => {
@@ -439,6 +483,23 @@ async function run() {
             const result = await applicationCollection.updateOne(filter, updateDoc);
 
             res.send({ message: "Application updated", result });
+        });
+
+
+        app.post('/create-payment-intent', async (req, res) => {
+
+            const amountInCents = req.body.amountInCents;
+
+            try {
+                const paymentIntent = await stripe.paymentIntents.create({
+                    amount: amountInCents,
+                    currency: 'usd',
+                    payment_method_types: ['card'],
+                });
+                res.json({ clientSecret: paymentIntent.client_secret })
+            } catch (error) {
+                res.status(500).json({ error: error.message });
+            }
         });
 
 
