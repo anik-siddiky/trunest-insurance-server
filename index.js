@@ -46,6 +46,62 @@ async function run() {
         const reviewCollection = database.collection('reviews')
         const newsletterCollection = database.collection('newsletter');
         const paymentHistoryCollection = database.collection('payments');
+        const policyClaimCollection = database.collection('claims')
+
+
+
+
+
+
+        // Update claim status by ID
+        app.patch('/claims/:id', async (req, res) => {
+            const id = req.params.id;
+            const { claimStatus } = req.body;
+            const result = await policyClaimCollection.updateOne(
+                { _id: new ObjectId(id) },
+                { $set: { claimStatus } }
+            );
+
+            if (result.matchedCount === 0) {
+                return res.status(404).send({ success: false, message: 'Claim not found' });
+            }
+
+            res.send({ success: true, message: `Claim ${claimStatus}` });
+        });
+
+        app.get('/claims/agent/:email', async (req, res) => {
+            const requestedEmail = req.params.email;
+            const result = await policyClaimCollection.find({ agent: requestedEmail }).toArray();
+            res.send(result);
+        });
+
+
+        // Posting claim req to db
+        app.post('/claims', async (req, res) => {
+            const claim = req.body;
+            const result = await policyClaimCollection.insertOne(claim);
+            res.status(201).send({ success: true, message: 'Claim submitted', insertedId: result.insertedId });
+        });
+
+
+        // Getting all the claim req
+        app.get('/claims', async (req, res) => {
+            const claims = await policyClaimCollection.find().toArray();
+            res.send(claims);
+        });
+
+        // getting a single claim req
+        app.get('/claims/:id', async (req, res) => {
+            const id = req.params.id;
+            const claim = await policyClaimCollection.findOne({ _id: new ObjectId(id) });
+
+            if (!claim) {
+                return res.status(404).send({ success: false, message: 'Claim not found' });
+            }
+            res.send(claim);
+        });
+
+
 
 
 
