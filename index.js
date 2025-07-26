@@ -50,13 +50,43 @@ async function run() {
 
 
 
+        // GET /claimable-policies?email=someone@example.com
+        app.get('/claimable-policies', async (req, res) => {
+            const email = req.query.email;
+
+            if (!email) {
+                return res.status(400).send({ message: 'Email is required' });
+            }
+
+            try {
+                const result = await applicationCollection.find({
+                    'personal.email': email,
+                    status: 'approved',
+                    paymentStatus: 'paid',
+                    policyStatus: 'active'
+                }).toArray();
+
+                res.send(result);
+            } catch (err) {
+                console.error(err);
+                res.status(500).send({ message: 'Failed to fetch claimable policies' });
+            }
+        });
+
+
+
         app.post('/confirm-payment', async (req, res) => {
             const { applicationId, amount, transactionId, policyTitle, userEmail } = req.body;
 
             try {
                 await applicationCollection.updateOne(
                     { _id: new ObjectId(applicationId) },
-                    { $set: { paymentStatus: 'paid' } }
+                    {
+                        $set: {
+                            paymentStatus: 'paid',
+                            policyStatus: 'active',
+                        }
+                    }
                 );
 
                 const paymentRecord = {
