@@ -1,21 +1,39 @@
 const express = require('express');
 const cors = require('cors');
+const app = express();
+const jwt = require('jsonwebtoken');
+const cookieParser = require('cookie-parser');
 const dotenv = require('dotenv');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 dotenv.config();
 
 const stripe = require('stripe')(process.env.PAYMENT_GATEWAY_KEY);
-const app = express();
 const port = process.env.PORT || 5000;
 
-app.use(cors());
+app.use(cors({
+    origin: ['http://localhost:5173', 'https://trunestinsurance.web.app'],
+    credentials: true
+}));
+
 app.use(express.json());
+app.use(cookieParser());
 
+const verifyToken = (req, res, next) => {
+    const token = req?.cookies?.token;
 
+    if (!token) {
+        return res.status(401).send({ message: 'Unauthorized access' });
+    }
 
-
-
+    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+        if (err) {
+            return res.status(401).send({ message: 'Unauthorized access' });
+        }
+        req.decoded = decoded;
+        next();
+    })
+};
 
 
 const uri = process.env.MONGO_URI;
@@ -29,13 +47,9 @@ const client = new MongoClient(uri, {
 });
 
 async function run() {
+
     try {
         await client.connect();
-
-
-
-
-
 
         const database = client.db('truNestInsurance');
         // Collections
@@ -49,12 +63,28 @@ async function run() {
         const policyClaimCollection = database.collection('claims')
 
 
+        // JWT token related APIs
+        app.post('/jwt', async (req, res) => {
+            const userData = req.body;
+            const token = jwt.sign(userData, process.env.JWT_SECRET, { expiresIn: '1d' });
+            res.cookie('token', token, {
+                httpOnly: true,
+                secure: false
+            })
+            res.send({ success: true });
+        });
 
-
-
+        app.post('/logout', (req, res) => {
+            res.clearCookie('token', {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'None',
+            });
+            res.send({ success: true, message: 'Logged out' });
+        });
 
         // Update claim status by ID
-        app.patch('/claims/:id', async (req, res) => {
+        app.patch('/claims/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
             const { claimStatus } = req.body;
             const result = await policyClaimCollection.updateOne(
@@ -69,7 +99,7 @@ async function run() {
             res.send({ success: true, message: `Claim ${claimStatus}` });
         });
 
-        app.get('/claims/agent/:email', async (req, res) => {
+        app.get('/claims/agent/:email', verifyToken, async (req, res) => {
             const requestedEmail = req.params.email;
             const result = await policyClaimCollection.find({ agent: requestedEmail }).toArray();
             res.send(result);
@@ -77,7 +107,7 @@ async function run() {
 
 
         // Posting claim req to db
-        app.post('/claims', async (req, res) => {
+        app.post('/claims', verifyToken, async (req, res) => {
             const claim = req.body;
             const result = await policyClaimCollection.insertOne(claim);
             res.status(201).send({ success: true, message: 'Claim submitted', insertedId: result.insertedId });
@@ -85,13 +115,13 @@ async function run() {
 
 
         // Getting all the claim req
-        app.get('/claims', async (req, res) => {
+        app.get('/claims', verifyToken, async (req, res) => {
             const claims = await policyClaimCollection.find().toArray();
             res.send(claims);
         });
 
         // getting a single claim req
-        app.get('/claims/:id', async (req, res) => {
+        app.get('/claims/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
             const claim = await policyClaimCollection.findOne({ _id: new ObjectId(id) });
 
@@ -164,7 +194,7 @@ async function run() {
         });
 
         // Getting payment data by email
-        app.get('/payments', async (req, res) => {
+        app.get('/payments', verifyToken, async (req, res) => {
             const email = req.query.email;
 
             if (!email) {
@@ -177,7 +207,7 @@ async function run() {
 
 
         // Getting a single payment data
-        app.get('/payment/:id', async (req, res) => {
+        app.get('/payment/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
             const filter = { _id: new ObjectId(id) };
             const result = await paymentHistoryCollection.findOne(filter);
@@ -208,7 +238,7 @@ async function run() {
 
         // Review related APIs
         // POST /reviews
-        app.post('/reviews', async (req, res) => {
+        app.post('/reviews', verifyToken, async (req, res) => {
             const review = req.body;
             review.createdAt = new Date();
             const result = await reviewCollection.insertOne(review);
@@ -216,7 +246,7 @@ async function run() {
         });
 
         // Getting all reviews
-        app.get('/reviews', async (req, res) => {
+        app.get('/reviews', verifyToken, async (req, res) => {
             const reviews = await reviewCollection.find().sort({ createdAt: -1 }).toArray();
             res.send(reviews);
         });
@@ -244,11 +274,6 @@ async function run() {
             if (!review) { return res.status(404).send({ error: 'Review not found' }); }
             res.send(review);
         });
-
-
-
-
-
 
 
         // Policy Related APIs
@@ -311,14 +336,14 @@ async function run() {
         });
 
         // Policy posting API from client
-        app.post('/policies', async (req, res) => {
+        app.post('/policies', verifyToken, async (req, res) => {
             const policy = req.body;
             const result = await policiesCollection.insertOne(policy);
             res.send(result);
         });
 
         // Policy updating API
-        app.put('/policies/:id', async (req, res) => {
+        app.put('/policies/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
             const updatedData = req.body;
             const filter = { _id: new ObjectId(id) };
@@ -328,7 +353,7 @@ async function run() {
         });
 
         // Updating policy purchasedCount when user apply and agent approve it
-        app.patch('/policies/:id/increase', async (req, res) => {
+        app.patch('/policies/:id/increase', verifyToken, async (req, res) => {
             const id = req.params.id;
             const result = await policiesCollection.updateOne(
                 { _id: new ObjectId(id) },
@@ -341,7 +366,7 @@ async function run() {
 
 
         // Policy deleting API
-        app.delete('/policies/:id', async (req, res) => {
+        app.delete('/policies/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
             const filter = { _id: new ObjectId(id) };
             const result = await policiesCollection.deleteOne(filter);
@@ -352,7 +377,7 @@ async function run() {
 
         // Users Related APIs
         // Saving all the user data to the DB
-        app.post('/users', async (req, res) => {
+        app.post('/users', verifyToken, async (req, res) => {
             const user = req.body;
             if (!user.email) {
                 return res.status(400).send({ error: "Email is required" });
@@ -373,13 +398,13 @@ async function run() {
         });
 
         // Getting all the users
-        app.get('/users', async (req, res) => {
+        app.get('/users', verifyToken, async (req, res) => {
             const users = await usersCollection.find().toArray();
             res.send(users);
         });
 
         // Getting a single user's data
-        app.get('/user', async (req, res) => {
+        app.get('/user', verifyToken, async (req, res) => {
             const email = req.query.email;
             const user = await usersCollection.findOne(email);
             res.send(user);
@@ -398,7 +423,7 @@ async function run() {
 
 
         // Updating user's role
-        app.patch('/users/:id', async (req, res) => {
+        app.patch('/users/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
             const { role } = req.body;
 
@@ -423,7 +448,7 @@ async function run() {
         });
 
         // Updating user's data in DB when user updating their profile
-        app.patch('/users/email/:email', async (req, res) => {
+        app.patch('/users/email/:email', verifyToken, async (req, res) => {
             const email = req.params.email;
             const { name, photoURL } = req.body;
 
@@ -442,7 +467,7 @@ async function run() {
 
 
         // Deleting user's from DB
-        app.delete('/users/:id', async (req, res) => {
+        app.delete('/users/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
 
             try {
@@ -467,7 +492,7 @@ async function run() {
         });
 
         // Posting the blog data
-        app.post('/blogs', async (req, res) => {
+        app.post('/blogs', verifyToken, async (req, res) => {
             const blogData = req.body;
             const result = await blogsCollection.insertOne(blogData);
             res.send(result);
@@ -482,7 +507,7 @@ async function run() {
         })
 
         // Update a blog
-        app.put('/blogs/:id', async (req, res) => {
+        app.put('/blogs/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
             const updatedBlog = req.body;
 
@@ -520,7 +545,7 @@ async function run() {
 
 
         // Blog deleting API
-        app.delete('/blogs/:id', async (req, res) => {
+        app.delete('/blogs/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
             const result = await blogsCollection.deleteOne({ _id: new ObjectId(id) });
             res.send(result);
@@ -529,14 +554,14 @@ async function run() {
 
         // Application related APIs
         // Saving application in the DB
-        app.post('/application', async (req, res) => {
+        app.post('/application', verifyToken, async (req, res) => {
             const data = req.body;
             const result = await applicationCollection.insertOne(data);
             res.send(result);
         });
 
         // Getting all application
-        app.get('/application', async (req, res) => {
+        app.get('/application', verifyToken, async (req, res) => {
             const { email, status } = req.query;
             const filter = {};
 
@@ -559,7 +584,7 @@ async function run() {
 
 
         // Getting a single application data
-        app.get('/application/:id', async (req, res) => {
+        app.get('/application/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
             const filter = { _id: new ObjectId(id) };
             const result = await applicationCollection.findOne(filter);
@@ -567,7 +592,7 @@ async function run() {
         });
 
         // Updating application status
-        app.patch('/application/:id', async (req, res) => {
+        app.patch('/application/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
             const updates = req.body;
             const filter = { _id: new ObjectId(id) };
@@ -578,8 +603,16 @@ async function run() {
             res.send({ message: "Application updated", result });
         });
 
+        // Deleting an application
+        app.delete('/application/:id', verifyToken, async (req, res) => {
+            const id = req.params.id;
+            const filter = { _id: new ObjectId(id) };
+            const result = await applicationCollection.deleteOne(filter);
+            res.send(result);
+        })
 
-        app.post('/create-payment-intent', async (req, res) => {
+
+        app.post('/create-payment-intent', verifyToken, async (req, res) => {
 
             const amountInCents = req.body.amountInCents;
 
@@ -596,17 +629,6 @@ async function run() {
         });
 
 
-
-
-
-
-
-
-
-
-
-
-
         await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
     } finally {
@@ -614,13 +636,6 @@ async function run() {
     }
 }
 run().catch(console.dir);
-
-
-
-
-
-
-
 
 
 app.get('/', (req, res) => {
