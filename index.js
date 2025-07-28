@@ -19,21 +19,7 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
-const verifyToken = (req, res, next) => {
-    const token = req?.cookies?.token;
 
-    if (!token) {
-        return res.status(401).send({ message: 'Unauthorized access' });
-    }
-
-    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-        if (err) {
-            return res.status(401).send({ message: 'Unauthorized access' });
-        }
-        req.decoded = decoded;
-        next();
-    })
-};
 
 
 const uri = process.env.MONGO_URI;
@@ -61,6 +47,92 @@ async function run() {
         const newsletterCollection = database.collection('newsletter');
         const paymentHistoryCollection = database.collection('payments');
         const policyClaimCollection = database.collection('claims')
+
+
+
+        const verifyToken = (req, res, next) => {
+            const token = req?.cookies?.token;
+
+            if (!token) {
+                return res.status(401).send({ message: 'Unauthorized access' });
+            }
+
+            jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+                if (err) {
+                    return res.status(401).send({ message: 'Unauthorized access' });
+                }
+                req.decoded = decoded;
+                next();
+            })
+        };
+
+        const verifyAdmin = async (req, res, next) => {
+            const email = req.decoded.email;
+            const query = { email }
+            const user = await usersCollection.findOne(query);
+            if (!user || user.role !== 'admin') {
+                return res.status(403).send({ message: 'forbidden access' });
+            }
+            next();
+        };
+
+
+        const verifyAgent = async (req, res, next) => {
+            const email = req.decoded.email;
+            const query = { email };
+
+            try {
+                const user = await usersCollection.findOne(query);
+
+                if (!user || user.role !== 'agent') {
+                    return res.status(403).send({ message: 'forbidden access' });
+                }
+
+                next();
+            } catch (error) {
+                console.error('Error verifying agent:', error);
+                return res.status(500).send({ message: 'Internal server error' });
+            }
+        };
+
+
+        const verifyAdminOrAgent = async (req, res, next) => {
+            const email = req.decoded.email;
+            const query = { email };
+
+            try {
+                const user = await usersCollection.findOne(query);
+
+                // Allow if user has either 'admin' OR 'agent' role
+                if (!user || (user.role !== 'admin' && user.role !== 'agent')) {
+                    return res.status(403).send({ message: 'forbidden access' });
+                }
+
+                next();
+            } catch (error) {
+                console.error('Error verifying admin or agent:', error);
+                return res.status(500).send({ message: 'Internal server error' });
+            }
+        };
+
+
+        const verifyCustomer = async (req, res, next) => {
+            const email = req.decoded.email;
+            const query = { email };
+
+            try {
+                const user = await usersCollection.findOne(query);
+
+                if (!user || user.role !== 'customer') {
+                    return res.status(403).send({ message: 'forbidden access' });
+                }
+
+                next();
+            } catch (error) {
+                console.error('Error verifying customer:', error);
+                return res.status(500).send({ message: 'Internal server error' });
+            }
+        };
 
 
         // JWT token related APIs
@@ -106,7 +178,7 @@ async function run() {
         });
 
         // Update claim status by ID
-        app.patch('/claims/:id', verifyToken, async (req, res) => {
+        app.patch('/claims/:id', verifyToken, verifyAgent, async (req, res) => {
             const id = req.params.id;
             const { claimStatus } = req.body;
             const result = await policyClaimCollection.updateOne(
@@ -121,7 +193,7 @@ async function run() {
             res.send({ success: true, message: `Claim ${claimStatus}` });
         });
 
-        app.get('/claims/agent/:email', verifyToken, async (req, res) => {
+        app.get('/claims/agent/:email', verifyToken, verifyAgent, async (req, res) => {
             const requestedEmail = req.params.email;
             const result = await policyClaimCollection.find({ agent: requestedEmail }).toArray();
             res.send(result);
@@ -143,7 +215,7 @@ async function run() {
         });
 
         // getting a single claim req
-        app.get('/claims/:id', verifyToken, async (req, res) => {
+        app.get('/claims/:id', verifyToken, verifyAgent, async (req, res) => {
             const id = req.params.id;
             const claim = await policyClaimCollection.findOne({ _id: new ObjectId(id) });
 
@@ -159,7 +231,7 @@ async function run() {
 
 
         // GET /claimable-policies?email=someone@example.com
-        app.get('/claimable-policies', async (req, res) => {
+        app.get('/claimable-policies', verifyToken, verifyCustomer, async (req, res) => {
             const email = req.query.email;
 
             if (!email) {
@@ -183,7 +255,7 @@ async function run() {
 
 
 
-        app.post('/confirm-payment', async (req, res) => {
+        app.post('/confirm-payment', verifyToken, verifyCustomer, async (req, res) => {
             const { applicationId, amount, transactionId, policyTitle, userEmail } = req.body;
 
             try {
@@ -216,7 +288,7 @@ async function run() {
         });
 
         // Getting payment data by email
-        app.get('/payments', verifyToken, async (req, res) => {
+        app.get('/payments', verifyToken, verifyCustomer, async (req, res) => {
             const email = req.query.email;
 
             if (!email) {
@@ -229,7 +301,7 @@ async function run() {
 
 
         // Getting a single payment data
-        app.get('/payment/:id', verifyToken, async (req, res) => {
+        app.get('/payment/:id', verifyToken, verifyCustomer, async (req, res) => {
             const id = req.params.id;
             const filter = { _id: new ObjectId(id) };
             const result = await paymentHistoryCollection.findOne(filter);
@@ -260,7 +332,7 @@ async function run() {
 
         // Review related APIs
         // POST /reviews
-        app.post('/reviews', verifyToken, async (req, res) => {
+        app.post('/reviews', verifyToken, verifyCustomer, async (req, res) => {
             const review = req.body;
             review.createdAt = new Date();
             const result = await reviewCollection.insertOne(review);
@@ -274,11 +346,11 @@ async function run() {
         });
 
         // Getting 5 reviews for feature
-        app.get('/reviews/featured', async (req, res) => {
+        app.get('/reviews/featured', verifyToken, async (req, res) => {
             try {
                 const reviews = await reviewCollection
                     .find()
-                    .sort({ createdAt: 1 }) // ascending: oldest first
+                    .sort({ createdAt: 1 })
                     .limit(5)
                     .toArray();
 
@@ -329,7 +401,7 @@ async function run() {
         });
 
         // Get ALL policies without pagination
-        app.get('/all-policies', async (req, res) => {
+        app.get('/all-policies', verifyToken, verifyAdmin, async (req, res) => {
             const allPolicies = await policiesCollection.find().toArray();
             res.send(allPolicies);
         });
@@ -358,14 +430,14 @@ async function run() {
         });
 
         // Policy posting API from client
-        app.post('/policies', verifyToken, async (req, res) => {
+        app.post('/policies', verifyToken, verifyAdmin, async (req, res) => {
             const policy = req.body;
             const result = await policiesCollection.insertOne(policy);
             res.send(result);
         });
 
         // Policy updating API
-        app.put('/policies/:id', verifyToken, async (req, res) => {
+        app.put('/policies/:id', verifyToken, verifyAdmin, async (req, res) => {
             const id = req.params.id;
             const updatedData = req.body;
             const filter = { _id: new ObjectId(id) };
@@ -388,7 +460,7 @@ async function run() {
 
 
         // Policy deleting API
-        app.delete('/policies/:id', verifyToken, async (req, res) => {
+        app.delete('/policies/:id', verifyToken, verifyAdmin, async (req, res) => {
             const id = req.params.id;
             const filter = { _id: new ObjectId(id) };
             const result = await policiesCollection.deleteOne(filter);
@@ -420,7 +492,7 @@ async function run() {
         });
 
         // Getting all the users
-        app.get('/users', verifyToken, async (req, res) => {
+        app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
             const users = await usersCollection.find().toArray();
             res.send(users);
         });
@@ -445,7 +517,7 @@ async function run() {
 
 
         // Updating user's role
-        app.patch('/users/:id', verifyToken, async (req, res) => {
+        app.patch('/users/:id', verifyToken, verifyAdmin, async (req, res) => {
             const id = req.params.id;
             const { role } = req.body;
 
@@ -489,7 +561,7 @@ async function run() {
 
 
         // Deleting user's from DB
-        app.delete('/users/:id', verifyToken, async (req, res) => {
+        app.delete('/users/:id', verifyToken, verifyAdmin, async (req, res) => {
             const id = req.params.id;
 
             try {
@@ -514,7 +586,7 @@ async function run() {
         });
 
         // Posting the blog data
-        app.post('/blogs', verifyToken, async (req, res) => {
+        app.post('/blogs', verifyToken, verifyAdminOrAgent, async (req, res) => {
             const blogData = req.body;
             const result = await blogsCollection.insertOne(blogData);
             res.send(result);
@@ -529,7 +601,7 @@ async function run() {
         })
 
         // Update a blog
-        app.put('/blogs/:id', verifyToken, async (req, res) => {
+        app.put('/blogs/:id', verifyToken, verifyAdminOrAgent, async (req, res) => {
             const id = req.params.id;
             const updatedBlog = req.body;
 
@@ -567,7 +639,7 @@ async function run() {
 
 
         // Blog deleting API
-        app.delete('/blogs/:id', verifyToken, async (req, res) => {
+        app.delete('/blogs/:id', verifyToken, verifyAdminOrAgent, async (req, res) => {
             const id = req.params.id;
             const result = await blogsCollection.deleteOne({ _id: new ObjectId(id) });
             res.send(result);
@@ -614,7 +686,7 @@ async function run() {
         });
 
         // Updating application status
-        app.patch('/application/:id', verifyToken, async (req, res) => {
+        app.patch('/application/:id', verifyToken, verifyAdminOrAgent, async (req, res) => {
             const id = req.params.id;
             const updates = req.body;
             const filter = { _id: new ObjectId(id) };
@@ -626,7 +698,7 @@ async function run() {
         });
 
         // Deleting an application
-        app.delete('/application/:id', verifyToken, async (req, res) => {
+        app.delete('/application/:id', verifyToken, verifyAdmin, async (req, res) => {
             const id = req.params.id;
             const filter = { _id: new ObjectId(id) };
             const result = await applicationCollection.deleteOne(filter);
@@ -634,7 +706,7 @@ async function run() {
         })
 
 
-        app.post('/create-payment-intent', verifyToken, async (req, res) => {
+        app.post('/create-payment-intent', verifyToken, verifyCustomer, async (req, res) => {
 
             const amountInCents = req.body.amountInCents;
 
