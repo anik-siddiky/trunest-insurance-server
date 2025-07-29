@@ -464,7 +464,7 @@ async function run() {
 
         // Users Related APIs
         // Saving all the user data to the DB
-        app.post('/users', verifyToken, async (req, res) => {
+        app.post('/users', async (req, res) => {
             const user = req.body;
             if (!user.email) {
                 return res.status(400).send({ error: "Email is required" });
