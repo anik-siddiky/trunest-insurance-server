@@ -12,14 +12,16 @@ const stripe = require('stripe')(process.env.PAYMENT_GATEWAY_KEY);
 const port = process.env.PORT || 5000;
 
 app.use(cors({
-    origin: ['http://localhost:5173', 'https://trunestinsurance.web.app'],
+    origin: [
+        'http://localhost:5173',
+        'https://trunestinsurance.web.app',
+        'https://trunest-insurance-server.vercel.app'
+    ],
     credentials: true
 }));
 
 app.use(express.json());
 app.use(cookieParser());
-
-
 
 
 const uri = process.env.MONGO_URI;
@@ -47,7 +49,6 @@ async function run() {
         const newsletterCollection = database.collection('newsletter');
         const paymentHistoryCollection = database.collection('payments');
         const policyClaimCollection = database.collection('claims')
-
 
 
         const verifyToken = (req, res, next) => {
@@ -95,7 +96,6 @@ async function run() {
             }
         };
 
-
         const verifyAdminOrAgent = async (req, res, next) => {
             const email = req.decoded.email;
             const query = { email };
@@ -103,7 +103,6 @@ async function run() {
             try {
                 const user = await usersCollection.findOne(query);
 
-                // Allow if user has either 'admin' OR 'agent' role
                 if (!user || (user.role !== 'admin' && user.role !== 'agent')) {
                     return res.status(403).send({ message: 'forbidden access' });
                 }
@@ -135,14 +134,17 @@ async function run() {
         };
 
 
-        // JWT token related APIs
         app.post('/jwt', async (req, res) => {
             const userData = req.body;
             const token = jwt.sign(userData, process.env.JWT_SECRET, { expiresIn: '1d' });
+
             res.cookie('token', token, {
                 httpOnly: true,
-                secure: false
-            })
+                secure: true,
+                sameSite: 'none',
+                maxAge: 24 * 60 * 60 * 1000
+            });
+
             res.send({ success: true });
         });
 
@@ -168,11 +170,12 @@ async function run() {
             }
         });
 
+
         app.post('/logout', (req, res) => {
             res.clearCookie('token', {
                 httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
-                sameSite: 'None',
+                secure: true,
+                sameSite: 'none'
             });
             res.send({ success: true, message: 'Logged out' });
         });
@@ -226,11 +229,6 @@ async function run() {
         });
 
 
-
-
-
-
-        // GET /claimable-policies?email=someone@example.com
         app.get('/claimable-policies', verifyToken, verifyCustomer, async (req, res) => {
             const email = req.query.email;
 
@@ -252,7 +250,6 @@ async function run() {
                 res.status(500).send({ message: 'Failed to fetch claimable policies' });
             }
         });
-
 
 
         app.post('/confirm-payment', verifyToken, verifyCustomer, async (req, res) => {
@@ -346,7 +343,7 @@ async function run() {
         });
 
         // Getting 5 reviews for feature
-        app.get('/reviews/featured', verifyToken, async (req, res) => {
+        app.get('/reviews/featured', async (req, res) => {
             try {
                 const reviews = await reviewCollection
                     .find()
@@ -457,8 +454,6 @@ async function run() {
         });
 
 
-
-
         // Policy deleting API
         app.delete('/policies/:id', verifyToken, verifyAdmin, async (req, res) => {
             const id = req.params.id;
@@ -466,8 +461,6 @@ async function run() {
             const result = await policiesCollection.deleteOne(filter);
             res.send(result);
         });
-
-
 
         // Users Related APIs
         // Saving all the user data to the DB
@@ -581,9 +574,24 @@ async function run() {
         // Blogs related APIs
         // Getting all blogs
         app.get('/blogs', async (req, res) => {
-            const blogs = await blogsCollection.find().sort({ createdAt: -1 }).toArray();
-            res.send(blogs);
+            try {
+                const email = req.query.email;
+                const role = req.query.role;
+
+                let query = {};
+
+                if (role === 'agent' && email) {
+                    query = { 'author.email': email };
+                }
+
+                const blogs = await blogsCollection.find(query).sort({ createdAt: -1 }).toArray();
+                res.send(blogs);
+            } catch (error) {
+                console.error('Error fetching blogs:', error);
+                res.status(500).send({ message: 'Internal Server Error' });
+            }
         });
+
 
         // Posting the blog data
         app.post('/blogs', verifyToken, verifyAdminOrAgent, async (req, res) => {
@@ -719,6 +727,21 @@ async function run() {
                 res.json({ clientSecret: paymentIntent.client_secret })
             } catch (error) {
                 res.status(500).json({ error: error.message });
+            }
+        });
+
+
+        // Dashboard home stats related api
+        // Getting admin stats
+        app.get('/admin/stats', verifyToken, verifyAdmin, async (req, res) => {
+            try {
+                const [totalUsers, totalPolicies, totalBlogs, totalApplications, approvedApplications, totalReviews, totalClaims, approvedClaims, totalPayments, totalRevenueAgg] = await Promise.all([usersCollection.estimatedDocumentCount(), policiesCollection.estimatedDocumentCount(), blogsCollection.estimatedDocumentCount(), applicationCollection.estimatedDocumentCount(), applicationCollection.countDocuments({ status: 'approved' }), reviewCollection.estimatedDocumentCount(), policyClaimCollection.estimatedDocumentCount(), policyClaimCollection.countDocuments({ claimStatus: 'approved' }), paymentHistoryCollection.estimatedDocumentCount(), paymentHistoryCollection.aggregate([{ $group: { _id: null, total: { $sum: '$amount' } } }]).toArray()]);
+
+                const totalRevenue = totalRevenueAgg[0]?.total || 0;
+
+                res.send({ totalUsers, totalPolicies, totalBlogs, totalApplications, approvedApplications, totalReviews, totalClaims, approvedClaims, totalPayments, totalRevenue });
+            } catch (error) {
+                res.status(500).send({ message: 'Failed to load admin stats', error });
             }
         });
 
