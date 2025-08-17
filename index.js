@@ -502,7 +502,7 @@ async function run() {
             const agents = await usersCollection
                 .find({ role: 'agent' })
                 .sort({ _id: 1 })
-                .limit(3)
+                .limit(4)
                 .toArray();
 
             res.send(agents);
